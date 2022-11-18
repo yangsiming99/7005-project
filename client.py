@@ -1,43 +1,72 @@
+import getopt
 import sys
 import socket
 import json
+from enum import Enum
+
+BUFFER_SIZE = 1024
+WINDOW_SIZE = 100
+
+HOST = "192.168.1.16"
+PORT = 5000
+FILE = "test.txt"
+
+
+class WindowType(Enum):
+    SEND_ACKED = 1
+    SEND_NOT_ACKED_YET = 2
+    AVALIABLE_NOT_SEND_YET = 3
+    DISABLED_NOT_SEND_YET = 4
+    INIT = 5
+
+
+window = [{
+    type: WindowType.INIT,
+    "data": None
+}] * WINDOW_SIZE
+
 
 def main():
-  param = set_parameters()
-  while True:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-      sock.settimeout(2)
-      sock.connect((param["HOST"], param["PORT"]))
-      toSend = input("message: \n")
-      send_recv(toSend, sock)
+        sock.connect((HOST, PORT))
+        with open(FILE, "rb") as file:
+            send_data = file.read(BUFFER_SIZE)
+            while send_data:
+                sock.sendall(send_data)
+                send_data = file.read(BUFFER_SIZE)
 
-def send_recv(msg, sock):
-  complete = False
-  while complete == False:
+
+def help_msg():
+    print("-s or --server to specify the host name\n"
+          "-p or --port is the the host port\n"
+          "-f or --file is the absolute directory for file to send")
+
+
+if __name__ == '__main__':
+    options = []
+    argv = sys.argv[1:]
     try:
-      sock.send(msg.encode())
-      data = sock.recv(1024)
-      print(data.decode())
-      complete = True
-    except socket.timeout as e:
-      print(f'message: "{msg}" has timed out')
+        options, args = getopt.getopt(argv, 's:p:f:', ['server=', 'port=', 'file='])
+    except getopt.GetoptError as exception:
+        print(f"Argument Error : {exception.msg}")
+        help_msg()
+        sys.exit()
 
-def set_parameters():
-  default = {
-    "PORT":5000,
-    "HOST": ""
-  }
+    for opt, arg in options:
+        if opt in ('-s', '--server'):
+            HOST = arg
+        elif opt in ('-p', '--port'):
+            PORT = int(arg)
+        elif opt in ('-f', '--file'):
+            FILE = arg
+        else:
+            help_msg()
 
-  if "-h" in sys.argv:
-    param = sys.argv.index("-c") + 1
-    default["cert"] = sys.argv[param]
-  else:
-    raise "No Host Address Specified"
-
-  if "-p" in sys.argv:
-    param = sys.argv.index("-p") + 1
-    default["port"] = int(sys.argv[param])
-  return default
-
-if __name__ == "__main__":
-  main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("\nExit\n")
+    except Exception as e:
+        print(e)
+    finally:
+        sys.exit()
