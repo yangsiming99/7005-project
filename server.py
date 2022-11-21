@@ -5,6 +5,8 @@ import json
 import threading
 from enum import Enum
 
+from util import pack_segment
+
 BACK_LOG = 5
 BUFFER_SIZE = 1024
 WINDOW_SIZE = 1000
@@ -14,17 +16,8 @@ PORT = 5000
 
 class WindowType(Enum):
     RECV_ACKED = 1
-    RECV_NOT_YET_ACK = 2
-    AVALIABLE = 3
-
-
-def thread_read(conn, sender_buffer_size, window_buffer):
-    data = json.loads(conn.recv(sender_buffer_size).decode('utf-8'))
-    window_buffer[data["sequence"]]["data"] = data["data"]
-    print(data["data"])
-    conn.sendall(json.dumps({
-        "sequence": data["sequence"] + 1
-    }).encode('utf-8'))
+    AVALIABLE = 2
+    DISABLED = 3
 
 
 def main():
@@ -34,24 +27,31 @@ def main():
         print("Waiting for client")
         while True:
             conn, from_addr = sock.accept()
-            window_buffer = [{
-                "type": WindowType.AVALIABLE,
-            }] * WINDOW_SIZE
-            sender_buffer_size = 1024
-            total_segments = 0
             print(f"Connection from {from_addr} has been established")
             with conn:
                 sender_init_message = json.loads(conn.recv(BUFFER_SIZE).decode('utf-8'))
                 sender_buffer_size = sender_init_message["buffer_size"]
                 total_segments = sender_init_message["total_segments"]
-                sender_segment_size = sender_init_message["segment_size"]
 
                 conn.sendall(json.dumps({
-                    "max_window_size": WINDOW_SIZE,
+                    "recv_size": WINDOW_SIZE,
                 }).encode('utf-8'))
 
-                thread = threading.Thread(target=thread_read, args=(conn, sender_buffer_size, window_buffer))
-                thread.start()
+                window_buffer = [{}] * WINDOW_SIZE
+                for i in range(WINDOW_SIZE):
+                    window_buffer[i] = {
+                        "type": WindowType.AVALIABLE
+                    }
+
+                for i in range(total_segments):
+                    data_raw = conn.recv(sender_buffer_size).decode('utf-8')
+                    data = json.loads(data_raw)
+                    sequence = int(data["sequence"])
+                    window_buffer[sequence]["data"] = data["data"]
+                    print(data["data"])
+                    window_buffer[sequence]["type"] = WindowType.RECV_ACKED
+                    count = sum(1 for i in window_buffer if i["type"] == WindowType.AVALIABLE)
+                    conn.sendall(pack_segment(sequence, int(data["ack_no"]), "", count))
 
 
 def help_msg():
