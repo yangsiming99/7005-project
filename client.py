@@ -1,9 +1,11 @@
+import copy
 import getopt
 import math
 import sys
 import socket
 import json
 import threading
+import time
 from enum import Enum
 
 from util import pack_segment
@@ -16,7 +18,7 @@ HOST = "127.0.0.1"
 PORT = 5000
 FILE = ""
 
-TIME_OUT = 2000
+TIME_OUT = 20.0
 
 
 class WindowType(Enum):
@@ -61,15 +63,8 @@ def main():
         "total_segments": 0
     }
 
-    server_info = {
-        "window_size": 100
-    }
-
-    windows = []
-
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.connect((HOST, PORT))
-        sock.settimeout(TIME_OUT)
         if init_message["file"]:
             with open(FILE, "r", encoding="utf-8") as file:
                 data = file.read()
@@ -77,30 +72,40 @@ def main():
             data = input('>')
 
         init_message["total_data_size"] = len(data)
-        result = init_window(data, init_message["total_data_size"])
+        window_buffer = init_window(data, init_message["total_data_size"])
 
-        init_message["total_segments"] = result["total_segments"]
-        window_buffer = result["window"]
+        init_message["total_segments"] = len(window_buffer)
 
         print(init_message)
 
         sock.sendall(json.dumps(init_message).encode('utf-8'))
         server_info = json.loads(sock.recv(BUFFER_SIZE).decode('utf-8'))
-        recv_size = server_info["recv_size"]
-        # update the max server window size to avaliable
-        window_buffer[0:recv_size] = list(map(update_to_avaliable, window_buffer[0:recv_size]))
+        # print(server_info)
+        # recv_size = server_info["recv_size"]
+        # # update the max server window size to avaliable
+        # window_buffer[0:recv_size] = list(map(update_to_avaliable, window_buffer[0:recv_size]))
 
-        thread = threading.Thread(target=ack_thread, args=(sock, window_buffer))
-        thread.daemon = True
-        thread.start()
+        # thread = threading.Thread(target=ack_thread, args=(sock, window_buffer))
+        # thread.daemon = True
+        # thread.start()
 
         # print(window_buffer)
         for index, each in enumerate(window_buffer):
             if each["type"] == WindowType.AVALIABLE_NOT_SEND_YET:
-                # sending_thread = threading.Thread(target=thread_send, args=(sock, each, index))
-                # sending_thread.start()
-                sock.sendall(pack_segment(index + 1, index, each["data"], recv_size))
+                sock.sendall(pack_segment(index + 1, index, each["data"], init_message["total_segments"] - index))
                 each["type"] = WindowType.SEND_NOT_ACKED_YET
+                deadline = time.time() + TIME_OUT
+                ack = json.loads(sock.recv(BUFFER_SIZE).decode('utf-8'))
+                print(ack)
+                while not ack:
+                    if time.time() >= deadline:
+                        sock.sendall(
+                            pack_segment(index + 1, index, each["data"], init_message["total_segments"] - index)
+                        )
+                each["type"] = WindowType.SEND_ACKED
+                recv_current_window_size = int(ack["window_size"])
+                while recv_current_window_size <= 0:
+                    recv_current_window_size = int(json.loads(sock.recv(BUFFER_SIZE).decode('utf-8'))["window_size"])
 
 
 def init_window(data, length):
@@ -109,15 +114,12 @@ def init_window(data, length):
 
     for i in range(loop_times):
         window.append({
-            "type": WindowType.DISABLED_NOT_SEND_YET,
+            "type": WindowType.AVALIABLE_NOT_SEND_YET,
             "sequence": i,
             "window_size": WINDOW_SIZE,
             "data": data[i * SEGMENT_SIZE:i * SEGMENT_SIZE + SEGMENT_SIZE]
         })
-    return {
-        "window": window,
-        "total_segments": loop_times
-    }
+    return window
 
 
 def help_msg():

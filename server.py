@@ -9,7 +9,7 @@ from util import pack_segment
 
 BACK_LOG = 5
 BUFFER_SIZE = 1024
-WINDOW_SIZE = 1000
+WINDOW_SIZE = 100
 
 PORT = 5000
 
@@ -24,7 +24,7 @@ def main():
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.bind(("0.0.0.0", PORT))
         sock.listen(BACK_LOG)
-        print("Waiting for client")
+        print("Server Waiting for client")
         while True:
             conn, from_addr = sock.accept()
             print(f"Connection from {from_addr} has been established")
@@ -52,6 +52,15 @@ def main():
                     window_buffer[sequence]["type"] = WindowType.RECV_ACKED
                     count = sum(1 for i in window_buffer if i["type"] == WindowType.AVALIABLE)
                     conn.sendall(pack_segment(sequence, int(data["ack_no"]), "", count))
+                    if count == 0:
+                        previous_size = len(window_buffer)
+                        window_buffer.extend([{}] * WINDOW_SIZE)
+                        for index in range(previous_size, len(window_buffer)):
+                            window_buffer[index] = {
+                                "type": WindowType.AVALIABLE
+                            }
+                        count = sum(1 for i in window_buffer if i["type"] == WindowType.AVALIABLE)
+                        conn.sendall(pack_segment(sequence, int(data["ack_no"]), "", count))
 
 
 def help_msg():
