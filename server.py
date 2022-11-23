@@ -2,7 +2,6 @@ import getopt
 import sys
 import socket
 import json
-import threading
 from enum import Enum
 
 from util import pack_segment
