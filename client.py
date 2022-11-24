@@ -15,8 +15,8 @@ SEGMENT_SIZE = 951
 WINDOW_SIZE = 100
 
 HOST = "127.0.0.1"
-PORT = 4000
-FILE = ""
+PORT = 5000
+FILE = "words.txt"
 
 TIME_OUT = 20.0
 

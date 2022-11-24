@@ -1,5 +1,6 @@
 import json
 import math
+import struct
 
 
 def parse_number_to_fit_length(number):
