@@ -6,6 +6,7 @@ import socket
 import json
 import threading
 import time
+from _socket import timeout
 from enum import Enum
 
 from util import pack_segment
@@ -94,14 +95,20 @@ def main():
             if each["type"] == WindowType.AVALIABLE_NOT_SEND_YET:
                 sock.sendall(pack_segment(index + 1, index, each["data"], init_message["total_segments"] - index))
                 each["type"] = WindowType.SEND_NOT_ACKED_YET
-                deadline = time.time() + TIME_OUT
-                ack = json.loads(sock.recv(BUFFER_SIZE).decode('utf-8'))
-                print(ack)
-                while not ack:
-                    if time.time() >= deadline:
-                        sock.sendall(
-                            pack_segment(index + 1, index, each["data"], init_message["total_segments"] - index)
-                        )
+                try:
+                    # deadline = time.time() + TIME_OUT
+                    sock.settimeout(TIME_OUT)
+                    ack = json.loads(sock.recv(BUFFER_SIZE).decode('utf-8'))
+                    # while not ack:
+                    #     if time.time() >= deadline:
+                    #         sock.sendall(
+                    #             pack_segment(index + 1, index, each["data"], init_message["total_segments"] - index)
+                    #         )
+                    each["type"] = WindowType.SEND_ACKED
+                except timeout:
+                    sock.sendall(
+                        pack_segment(index + 1, index, each["data"], init_message["total_segments"] - index)
+                    )
                 each["type"] = WindowType.SEND_ACKED
                 recv_current_window_size = int(ack["window_size"])
                 while recv_current_window_size <= 0:
@@ -117,7 +124,7 @@ def init_window(data, length):
             "type": WindowType.AVALIABLE_NOT_SEND_YET,
             "sequence": i,
             "window_size": WINDOW_SIZE,
-            "data": data[i * SEGMENT_SIZE:i * SEGMENT_SIZE + SEGMENT_SIZE]
+            "data": str(data[i * SEGMENT_SIZE:i * SEGMENT_SIZE + SEGMENT_SIZE])
         })
     return window
 

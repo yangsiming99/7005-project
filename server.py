@@ -46,23 +46,22 @@ def main():
 
                 for i in range(total_segments):
                     data_raw = conn.recv(sender_buffer_size)
-                    print(struct.unpack('<LLLp', data_raw))
-                    # data = json.loads(data_raw)
-                    # sequence = int(data["sequence"])
-                    # window_buffer[sequence]["data"] = data["data"]
-                    # print(data["data"])
-                    # window_buffer[sequence]["type"] = WindowType.RECV_ACKED
-                    # count = sum(1 for i in window_buffer if i["type"] == WindowType.AVALIABLE)
-                    # conn.sendall(pack_segment(sequence, int(data["ack_no"]), "", count))
-                    # if count == 0:
-                    #     previous_size = len(window_buffer)
-                    #     window_buffer.extend([{}] * WINDOW_SIZE)
-                    #     for index in range(previous_size, len(window_buffer)):
-                    #         window_buffer[index] = {
-                    #             "type": WindowType.AVALIABLE
-                    #         }
-                    #     count = sum(1 for i in window_buffer if i["type"] == WindowType.AVALIABLE)
-                    #     conn.sendall(pack_segment(sequence, int(data["ack_no"]), "", count))
+                    data = json.loads(data_raw)
+                    sequence = int(data["sequence"])
+                    window_buffer[sequence]["data"] = data["data"]
+                    print(data["data"])
+                    window_buffer[sequence]["type"] = WindowType.RECV_ACKED
+                    count = sum(1 for i in window_buffer if i["type"] == WindowType.AVALIABLE)
+                    conn.sendall(pack_segment(sequence, int(data["ack_no"]), "", count))
+                    if count == 0:
+                        previous_size = len(window_buffer)
+                        window_buffer.extend([{}] * WINDOW_SIZE)
+                        for index in range(previous_size, len(window_buffer)):
+                            window_buffer[index] = {
+                                "type": WindowType.AVALIABLE
+                            }
+                        count = sum(1 for i in window_buffer if i["type"] == WindowType.AVALIABLE)
+                        conn.sendall(pack_segment(sequence, int(data["ack_no"]), "", count))
 
 
 def help_msg():
