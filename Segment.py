@@ -4,24 +4,28 @@ import struct
 from util import parse_number_to_fit_length
 
 
-class Segment:
+class Segment(object):
     HEADER_SIZE = 20
     MAX_SEGMENT_SIZE = 556
-    HEADER_FORMAT = 'I I L' + str(MAX_SEGMENT_SIZE) + 's'
+    HEADER_FORMAT = 'I I I I' + str(MAX_SEGMENT_SIZE) + 's'
     PACKET_SIZE = HEADER_SIZE + MAX_SEGMENT_SIZE
 
-    def __int__(self, ack_no, sequence, window_size, data):
+    def __init__(self, ack_no, sequence_no, window_size, segment_index, data):
         self.ack_no = ack_no
-        self.sequence = sequence
+        self.sequence_no = sequence_no
         self.window_size = window_size
+        self.segment_index = segment_index
         self.data = data
 
     def pack_segment(self):
         data_padding = self.MAX_SEGMENT_SIZE - len(self.data)
         self.data += ' ' * data_padding
-        return struct.pack(self.HEADER_FORMAT, self.ack_no, self.sequence, self.window_size, str(self.data))
+        return struct.pack(
+            self.HEADER_FORMAT, self.ack_no, self.sequence, self.window_size, bytes(self.data, 'utf-8')
+        )
 
     @classmethod
     def unpack_segment(cls, packed_segment):
-        (cls.ack_no, cls.sequence, cls.window_size, cls.data) = struct.unpack(Segment.HEADER_FORMAT, packed_segment)
+        (cls.ack_no, cls.sequence, cls.window_size, cls.segment_index, cls.data) = \
+            struct.unpack(Segment.HEADER_FORMAT, packed_segment)
         return cls
