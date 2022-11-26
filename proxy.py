@@ -58,7 +58,38 @@ def proxy_handler(client_sock, window_buffer):
 
 
 def update_options():
-    input(">")
+    global DROP_DATA
+    global DROP_ACK
+    global DELAY_DATA 
+    global DELAY_ACK
+
+    while True:
+        try:
+            print("Update values\n DD: Drop Data\n DA: Drop ACK \n DLD: Delay Data\n DLA: Delay Ack\n V: View Parameters")
+            selection = input("> ")
+            if selection == "DD":
+                value = int(input("Please Input Value Between 0 And 100\nDD > "))
+                if(value <= 100 and value >= 0):
+                    DROP_DATA = value
+            elif selection == "DA":
+                value = int(input("Please Input Value Between 0 And 100\nDA > "))
+                if(value <= 100 and value >= 0):
+                    DROP_ACK = value
+            elif selection == "DLD":
+                value = int(input("DLD > "))
+                DELAY_DATA = value
+            elif selection == "DLA":
+                value = int(input("DLA > "))
+                DELAY_ACK = value
+            elif selection == "V":
+                print(f"DROP_DATA: {DROP_DATA}%\nDROP ACK: {DROP_ACK}%\nDELAY_DATA: {DELAY_DATA}\nDELAY_ACK: {DELAY_ACK}")
+                input("Continue? >")
+            else:
+                print("Not an Option")
+        except ValueError:
+            print("Invalid Input for Menu")
+            input("Continue? >")
+
 
 
 def server():
