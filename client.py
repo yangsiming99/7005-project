@@ -15,10 +15,10 @@ from util import pack_segment
 SEGMENT_SIZE = Segment.MAX_SEGMENT_SIZE
 
 HOST = "127.0.0.1"
-PORT = 5000
+PORT = 4000
 FILE = "words.txt"
 
-TIME_OUT = 5.0
+TIME_OUT = Segment.TIME_OUT
 
 
 class WindowType(Enum):
@@ -26,6 +26,7 @@ class WindowType(Enum):
     SEND_NOT_ACKED_YET = 2
     AVALIABLE_NOT_SEND_YET = 3
     DISABLED_NOT_SEND_YET = 4
+    TIME_OUT = 5
 
 
 def update_to_avaliable(data):
@@ -48,18 +49,12 @@ def update_to_send(data):
     return data
 
 
-def ack_thread(sock, window_buffer):
-    while True:
-        for index, each in enumerate(window_buffer):
-            if each["type"] == WindowType.SEND_NOT_ACKED_YET:
-                try:
-                    # ack sent data
-                    ack_raw = sock.recv(Segment.PACKET_SIZE)
-                    ack = Segment.unpack_segment(ack_raw)
-                    window_buffer[ack.segment_index]["type"] = WindowType.SEND_ACKED
-                except timeout:
-                    # retransmit
-                    sock.sendall(window_buffer[index]["data"].pack_segment())
+def retransmit(sock, window_buffer, current_index):
+    sock.sendall(window_buffer[current_index]["data"].pack_segment())
+    retransmit_raw = sock.recv(Segment.PACKET_SIZE)
+    data = Segment.unpack_segment(retransmit_raw)
+    print(data.segment_index, current_index)
+    window_buffer[data.segment_index]["type"] = WindowType.SEND_ACKED
 
 
 def main():
@@ -98,41 +93,42 @@ def main():
         # print(window_buffer)
         while index < len(window_buffer):
             avaliable_window = sum(1 for i in window_buffer if i["type"] == WindowType.AVALIABLE_NOT_SEND_YET)
-            # print(avaliable_window)
             if avaliable_window > 0:
-                # print(index)
                 current_chunk = data[index * SEGMENT_SIZE:index * SEGMENT_SIZE + SEGMENT_SIZE]
                 expected_ack = sequence_no + len(current_chunk)
                 current_segment = Segment(expected_ack, sequence_no, avaliable_window, index, current_chunk)
                 sock.sendall(current_segment.pack_segment())
+                print(index, "SEND")
                 window_buffer[index]["type"] = WindowType.SEND_NOT_ACKED_YET
                 window_buffer[index]["data"] = current_segment
                 sequence_no += len(current_chunk)
                 window_size += 1
                 index += 1
             else:
+                ack_index = 0
                 # update window size
-                for ack_index in range(window_size):
+                while ack_index < window_size:
+                    current_index = index - window_size + ack_index
+                    if window_buffer[current_index]["type"] == WindowType.TIME_OUT:
+                        print("retransmit data lost")
+                        retransmit(sock, window_buffer, current_index)
                     try:
                         # ack sent data
                         ack = Segment.unpack_segment(sock.recv(Segment.PACKET_SIZE))
                         # print(ack.sequence_no)
                         # update window buffer
                         window_buffer[ack.segment_index]["type"] = WindowType.SEND_ACKED
+                        print(ack.segment_index, "ACK")
                     except timeout:
                         # retransmit
-                        sock.sendall(window_buffer[index - (window_size - ack_index)]["data"].pack_segment())
-                        retransmit_raw = sock.recv(Segment.PACKET_SIZE)
-                        while not retransmit_raw:
-                            retransmit_raw = sock.recv(Segment.PACKET_SIZE)
-                        retransmit = Segment.unpack_segment(retransmit_raw)
-                        window_buffer[retransmit.segment_index]["type"] = WindowType.SEND_ACKED
-                        continue
+                        print(current_index, "retransmit ack lost")
+                        retransmit(sock, window_buffer, current_index)
+                    ack_index += 1
                 # slide window buffer to right for length of receiver window size
                 update_window_size = Segment.unpack_segment(sock.recv(Segment.PACKET_SIZE))
                 if update_window_size.window_size > 0:
-                    window_buffer[index + 1: index + 1 + update_window_size.window_size] = list(
-                        map(update_to_avaliable, window_buffer[index + 1: index + 1 + update_window_size.window_size]))
+                    window_buffer[index: index + update_window_size.window_size] = list(
+                        map(update_to_avaliable, window_buffer[index: index + update_window_size.window_size]))
                     window_size = 0
                     continue
                 # receiver window size not allow to send
@@ -141,9 +137,9 @@ def main():
                         update_window_size = Segment.unpack_segment(sock.recv(Segment.PACKET_SIZE))
                         # print(update_window_size.window_size)
                         if update_window_size.window_size > 0:
-                            window_buffer[index + 1: index + 1 + update_window_size.window_size] = list(
+                            window_buffer[index: index + update_window_size.window_size] = list(
                                 map(update_to_avaliable,
-                                    window_buffer[index + 1: index + 1 + update_window_size.window_size]))
+                                    window_buffer[index: index + update_window_size.window_size]))
                             window_size = 0
                             break
 

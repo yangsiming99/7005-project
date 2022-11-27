@@ -6,6 +6,7 @@ import json
 import time
 from _socket import timeout
 from enum import Enum
+from threading import Thread
 
 from Segment import Segment
 from util import pack_segment
@@ -13,7 +14,7 @@ from util import pack_segment
 BACK_LOG = 5
 PORT = 5000
 
-TIME_OUT = 5.0
+TIME_OUT = Segment.TIME_OUT
 
 
 class WindowType(Enum):
@@ -34,9 +35,34 @@ def update_to_disable(data):
     return data
 
 
+def retransmit(conn, window_buffer, current_index):
+    retransmit_raw = conn.recv(Segment.PACKET_SIZE)
+    retransmit_data = Segment.unpack_segment(retransmit_raw)
+    window_buffer[current_index]["data"] = retransmit_data.data.decode('utf-8')
+    window_buffer[current_index]["sequence_no"] = len(retransmit_data.data) + retransmit_data.sequence_no
+    window_buffer[current_index]["ack_no"] = retransmit_data.sequence_no
+    window_buffer[current_index]["type"] = WindowType.RECV_NO_ACKED
+
+
+def ack_thread(conn, buffer_size, window_buffer, avaliable_window):
+    retransmit_raw_data = conn.recv(buffer_size)
+    retransmit_segment = Segment.unpack_segment(retransmit_raw_data)
+    print(retransmit_segment.segment_index, "RE-RECV")
+    window_buffer[retransmit_segment.segment_index]["data"] = retransmit_segment.data.decode('utf-8')
+    window_buffer[retransmit_segment.segment_index]["sequence_no"] = len(
+        retransmit_segment.data) + retransmit_segment.sequence_no
+    window_buffer[retransmit_segment.segment_index]["ack_no"] = retransmit_segment.sequence_no
+    conn.sendall(
+        Segment(len(retransmit_segment.data) + retransmit_segment.sequence_no
+                , retransmit_segment.sequence_no, avaliable_window,
+                retransmit_segment.segment_index, "").pack_segment()
+    )
+    window_buffer[retransmit_segment.segment_index]["type"] = WindowType.RECV_NO_ACKED
+
+
 def main():
     buffer_size = 1024
-    window_size = 10
+    window_size = Segment.INIT_WINDOW_SIZE
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.bind(("0.0.0.0", PORT))
         sock.listen(BACK_LOG)
@@ -48,7 +74,6 @@ def main():
                 sender_init_message = json.loads(conn.recv(buffer_size).decode('utf-8'))
                 buffer_size = sender_init_message["packet_size"]
                 total_segments = sender_init_message["total_segments"]
-
                 conn.sendall(json.dumps({
                     "recv_size": window_size,
                 }).encode('utf-8'))
@@ -56,51 +81,58 @@ def main():
                 window_buffer = [{"type": WindowType.DISABLED} for i in range(total_segments)]
                 window_buffer[0:window_size] = list(map(update_to_avaliable, window_buffer[0:window_size]))
 
-                conn.settimeout(TIME_OUT)
+                # conn.settimeout(TIME_OUT)
 
                 index = 0
                 window = 0
                 while index < total_segments:
                     avaliable_window = sum(1 for i in window_buffer if i["type"] == WindowType.AVALIABLE)
                     if avaliable_window > 0:
-                        try:
-                            raw_data = conn.recv(buffer_size)
-                        except timeout:
-                            window_buffer[index]["type"] = WindowType.TIMEOUT
-                            continue
-                        if raw_data:
-                            segment = Segment.unpack_segment(raw_data)
-                            window_buffer[index]["data"] = segment.data.decode('utf-8')
-                            window_buffer[index]["type"] = WindowType.RECV_NO_ACKED
-                            window_buffer[index]["sequence_no"] = len(segment.data) + segment.sequence_no
-                            window_buffer[index]["ack_no"] = segment.sequence_no
-                            index += 1
-                            window += 1
-                        else:
-                            continue
+                        # try:
+                        #     raw_data = conn.recv(buffer_size)
+                        #     segment = Segment.unpack_segment(raw_data)
+                        #     print(segment.segment_index, "RECV")
+                        #     window_buffer[index]["data"] = segment.data.decode('utf-8')
+                        #     window_buffer[index]["type"] = WindowType.RECV_NO_ACKED
+                        #     window_buffer[index]["sequence_no"] = len(segment.data) + segment.sequence_no
+                        #     window_buffer[index]["ack_no"] = segment.sequence_no
+                        # except timeout:
+                        #     print("timeout_recv_ack", index)
+                        #     window_buffer[index]["type"] = WindowType.TIMEOUT
+                        raw_data = conn.recv(buffer_size)
+                        segment = Segment.unpack_segment(raw_data)
+                        print(segment.segment_index, "RECV")
+                        window_buffer[index]["data"] = segment.data.decode('utf-8')
+                        window_buffer[index]["type"] = WindowType.RECV_NO_ACKED
+                        window_buffer[index]["sequence_no"] = len(segment.data) + segment.sequence_no
+                        window_buffer[index]["ack_no"] = segment.sequence_no
+                        index += 1
+                        window += 1
                     else:
-                        for ack_index in range(index - window, index):
+                        # retransmit_thread = Thread(target=ack_thread,
+                        #                            args=(conn, buffer_size, window_buffer, avaliable_window))
+                        # retransmit_thread.start()
+                        ack_index = 0
+                        while ack_index < window:
+                            current_index = index - window + ack_index
                             # not get the data make the ack timeout and sender will resend
-                            if window_buffer[ack_index]["type"] == WindowType.TIMEOUT:
-                                time.sleep(TIME_OUT)
-                                retransmit_raw = sock.recv(Segment.PACKET_SIZE)
-                                while not retransmit_raw:
-                                    retransmit_raw = sock.recv(Segment.PACKET_SIZE)
-                                retransmit = Segment.unpack_segment(retransmit_raw)
-                                window_buffer[ack_index]["data"] = retransmit.data.decode('utf-8')
-                                window_buffer[ack_index]["type"] = WindowType.RECV_NO_ACKED
-                                window_buffer[ack_index]["sequence_no"] = len(retransmit.data) + retransmit.sequence_no
-                                window_buffer[ack_index]["ack_no"] = retransmit.sequence_no
-                            sequence_no = window_buffer[ack_index]["sequence_no"]
-                            ack_no = window_buffer[ack_index]["ack_no"]
+                            if window_buffer[current_index]["type"] == WindowType.TIMEOUT:
+                                print(current_index, "retransmit")
+                                retransmit(conn, window_buffer, current_index)
+                            sequence_no = window_buffer[current_index]["sequence_no"]
+                            ack_no = window_buffer[current_index]["ack_no"]
+
                             conn.sendall(
                                 Segment(sequence_no, ack_no, avaliable_window,
-                                        ack_index, "").pack_segment()
+                                        current_index, "").pack_segment()
                             )
-                            window_buffer[ack_index]["type"] = WindowType.RECV_ACKED
-                            print(window_buffer[ack_index]["data"])
-                        window_buffer[index + 1:window_size + index + 1] = list(
-                            map(update_to_avaliable, window_buffer[index + 1:window_size + index + 1]))
+                            print(current_index, "ACK")
+                            window_buffer[current_index]["type"] = WindowType.RECV_ACKED
+                            # print(window_buffer[current_index]["data"])
+                            ack_index += 1
+
+                        window_buffer[index:window_size + index] = list(
+                            map(update_to_avaliable, window_buffer[index:window_size + index]))
                         avaliable_window = sum(1 for i in window_buffer if i["type"] == WindowType.AVALIABLE)
                         conn.sendall(
                             Segment(segment.sequence_no, len(segment.data) + segment.sequence_no, avaliable_window,

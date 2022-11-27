@@ -9,6 +9,8 @@ class Segment(object):
     MAX_SEGMENT_SIZE = 600
     HEADER_FORMAT = '<I I I I' + str(MAX_SEGMENT_SIZE) + 's'
     PACKET_SIZE = HEADER_SIZE + MAX_SEGMENT_SIZE
+    TIME_OUT = 2.0
+    INIT_WINDOW_SIZE = 5
 
     def __init__(self, ack_no, sequence_no, window_size, segment_index, data):
         self.ack_no = ack_no
