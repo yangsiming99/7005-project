@@ -50,6 +50,7 @@ def update_to_send(data):
 
 
 def retransmit(sock, window_buffer, current_index):
+    window_buffer[current_index]["data"].set_retransmit(True)
     sock.sendall(window_buffer[current_index]["data"].pack_segment())
     retransmit_raw = sock.recv(Segment.PACKET_SIZE)
     data = Segment.unpack_segment(retransmit_raw)

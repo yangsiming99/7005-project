@@ -81,30 +81,42 @@ def main():
                 window_buffer = [{"type": WindowType.DISABLED} for i in range(total_segments)]
                 window_buffer[0:window_size] = list(map(update_to_avaliable, window_buffer[0:window_size]))
 
-                # conn.settimeout(TIME_OUT)
-
                 index = 0
                 window = 0
                 while index < total_segments:
                     avaliable_window = sum(1 for i in window_buffer if i["type"] == WindowType.AVALIABLE)
                     if avaliable_window > 0:
+                        conn.settimeout(TIME_OUT)
                         try:
                             raw_data = conn.recv(buffer_size)
                             segment = Segment.unpack_segment(raw_data)
-                            print(segment.segment_index, "RECV")
-                            window_buffer[index]["data"] = segment.data.decode('utf-8')
-                            window_buffer[index]["type"] = WindowType.RECV_NO_ACKED
-                            window_buffer[index]["sequence_no"] = len(segment.data) + segment.sequence_no
-                            window_buffer[index]["ack_no"] = segment.sequence_no
+                            if segment.retransmit:
+                                window_buffer[segment.segment_index]["data"] = segment.data.decode('utf-8')
+                                window_buffer[segment.segment_index]["sequence_no"] = len(segment.data) + segment.sequence_no
+                                window_buffer[segment.segment_index]["ack_no"] = segment.sequence_no
+                                conn.sendall(
+                                    Segment(window_buffer[segment.segment_index]["sequence_no"],
+                                            window_buffer[segment.segment_index]["ack_no"],
+                                            avaliable_window,
+                                            segment.segment_index, "").pack_segment()
+                                )
+                                print(segment.segment_index, "RE-ACK")
+                                window_buffer[segment.segment_index]["type"] = WindowType.RECV_ACKED
+                            else:
+                                print(segment.segment_index, "RECV")
+                                window_buffer[index]["data"] = segment.data.decode('utf-8')
+                                window_buffer[index]["type"] = WindowType.RECV_NO_ACKED
+                                window_buffer[index]["sequence_no"] = len(segment.data) + segment.sequence_no
+                                window_buffer[index]["ack_no"] = segment.sequence_no
+                                index += 1
+                                window += 1
                         except timeout:
-                            print("timeout_recv_ack", index)
+                            print("timeout", index)
                             window_buffer[index]["type"] = WindowType.TIMEOUT
-                        index += 1
-                        window += 1
+                            index += 1
+                            window += 1
                     else:
-                        # retransmit_thread = Thread(target=ack_thread,
-                        #                            args=(conn, buffer_size, window_buffer, avaliable_window))
-                        # retransmit_thread.start()
+                        conn.settimeout(0)
                         ack_index = 0
                         while ack_index < window:
                             current_index = index - window + ack_index
@@ -121,7 +133,7 @@ def main():
                             )
                             print(current_index, "ACK")
                             window_buffer[current_index]["type"] = WindowType.RECV_ACKED
-                            print(window_buffer[current_index]["data"])
+                            # print(window_buffer[current_index]["data"])
                             ack_index += 1
 
                         window_buffer[index:window_size + index] = list(
