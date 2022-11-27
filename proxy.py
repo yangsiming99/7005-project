@@ -19,7 +19,7 @@ PORT = 4000
 REMOTE_HOST = "127.0.0.1"
 REMOTE_PORT = 5000
 
-DROP_DATA = 0
+DROP_DATA = 50
 DROP_ACK = 0
 
 DELAY_DATA = 0
@@ -60,7 +60,7 @@ def update_to_avaliable(data):
 def retransmit_data(client_sock, buffer_size, remote_sock, data_buffer, ack_index):
     retransmit_raw = client_sock.recv(buffer_size)
     retransmit = Segment.unpack_segment(retransmit_raw)
-    # print(retransmit.segment_index, "retransmit index")
+    print(retransmit.segment_index, "retransmit index", retransmit.retransmit)
     remote_sock.sendall(retransmit_raw)
     retransmit_ack_raw = remote_sock.recv(buffer_size)
     client_sock.sendall(retransmit_ack_raw)
@@ -88,20 +88,19 @@ def proxy_handler(client_sock):
             window = 0
             avaliable_window = init_window_size
 
-            while index < total_segments:
+            while True:
                 if avaliable_window > 0:
-                    raw_data = client_sock.recv(buffer_size)
-                    data_buffer[index]["data"] = raw_data
                     if should_drop_data():
                         data_buffer[index]["type"] = WindowType.DROP_DATA
                         # print(f"Drop data {index}")
                     else:
                         if should_delay_data():
                             data_buffer[index]["type"] = WindowType.DROP_DATA
-                            # time.sleep(TIME_OUT)
+                            time.sleep(TIME_OUT)
+                        raw_data = client_sock.recv(buffer_size)
                         remote_sock.sendall(raw_data)
                         data_buffer[index]["type"] = WindowType.SEND_NOT_ACKED_YET
-                        # print(index, "SEND")
+                        print(index, "SEND")
                         segment = Segment.unpack_segment(raw_data)
                         data_buffer[index]["sequence_no"] = segment.sequence_no
                         data_buffer[index]["ack_no"] = segment.ack_no
@@ -113,15 +112,15 @@ def proxy_handler(client_sock):
                     while ack_index < window:
                         current_index = index - window + ack_index
                         if data_buffer[current_index]["type"] == WindowType.DROP_DATA:
-                            # print(current_index, "drop data index")
+                            print(current_index, "drop data index")
                             retransmit_data(client_sock, buffer_size, remote_sock, data_buffer, current_index)
                         elif should_drop_ack() or should_delay_ack():
-                            # print(current_index, "drop ack index")
+                            print(current_index, "drop ack index")
                             retransmit_data(client_sock, buffer_size, remote_sock, data_buffer, current_index)
                         else:
                             raw_ack = remote_sock.recv(buffer_size)
                             client_sock.sendall(raw_ack)
-                            # print(current_index, "ACKED")
+                            print(current_index, "ACKED")
                             data_buffer[current_index]["type"] = WindowType.SEND_ACKED
                         ack_index += 1
                     update_window_size = remote_sock.recv(buffer_size)
