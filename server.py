@@ -88,24 +88,17 @@ def main():
                 while index < total_segments:
                     avaliable_window = sum(1 for i in window_buffer if i["type"] == WindowType.AVALIABLE)
                     if avaliable_window > 0:
-                        # try:
-                        #     raw_data = conn.recv(buffer_size)
-                        #     segment = Segment.unpack_segment(raw_data)
-                        #     print(segment.segment_index, "RECV")
-                        #     window_buffer[index]["data"] = segment.data.decode('utf-8')
-                        #     window_buffer[index]["type"] = WindowType.RECV_NO_ACKED
-                        #     window_buffer[index]["sequence_no"] = len(segment.data) + segment.sequence_no
-                        #     window_buffer[index]["ack_no"] = segment.sequence_no
-                        # except timeout:
-                        #     print("timeout_recv_ack", index)
-                        #     window_buffer[index]["type"] = WindowType.TIMEOUT
-                        raw_data = conn.recv(buffer_size)
-                        segment = Segment.unpack_segment(raw_data)
-                        print(segment.segment_index, "RECV")
-                        window_buffer[index]["data"] = segment.data.decode('utf-8')
-                        window_buffer[index]["type"] = WindowType.RECV_NO_ACKED
-                        window_buffer[index]["sequence_no"] = len(segment.data) + segment.sequence_no
-                        window_buffer[index]["ack_no"] = segment.sequence_no
+                        try:
+                            raw_data = conn.recv(buffer_size)
+                            segment = Segment.unpack_segment(raw_data)
+                            print(segment.segment_index, "RECV")
+                            window_buffer[index]["data"] = segment.data.decode('utf-8')
+                            window_buffer[index]["type"] = WindowType.RECV_NO_ACKED
+                            window_buffer[index]["sequence_no"] = len(segment.data) + segment.sequence_no
+                            window_buffer[index]["ack_no"] = segment.sequence_no
+                        except timeout:
+                            print("timeout_recv_ack", index)
+                            window_buffer[index]["type"] = WindowType.TIMEOUT
                         index += 1
                         window += 1
                     else:
@@ -128,7 +121,7 @@ def main():
                             )
                             print(current_index, "ACK")
                             window_buffer[current_index]["type"] = WindowType.RECV_ACKED
-                            # print(window_buffer[current_index]["data"])
+                            print(window_buffer[current_index]["data"])
                             ack_index += 1
 
                         window_buffer[index:window_size + index] = list(

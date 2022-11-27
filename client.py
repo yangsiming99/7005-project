@@ -109,19 +109,16 @@ def main():
                 # update window size
                 while ack_index < window_size:
                     current_index = index - window_size + ack_index
-                    if window_buffer[current_index]["type"] == WindowType.TIME_OUT:
-                        print("retransmit data lost")
-                        retransmit(sock, window_buffer, current_index)
                     try:
                         # ack sent data
                         ack = Segment.unpack_segment(sock.recv(Segment.PACKET_SIZE))
                         # print(ack.sequence_no)
                         # update window buffer
-                        window_buffer[ack.segment_index]["type"] = WindowType.SEND_ACKED
-                        print(ack.segment_index, "ACK")
+                        window_buffer[current_index]["type"] = WindowType.SEND_ACKED
+                        print(ack.segment_index, current_index, "ACK")
                     except timeout:
                         # retransmit
-                        print(current_index, "retransmit ack lost")
+                        print(current_index, "retransmit")
                         retransmit(sock, window_buffer, current_index)
                     ack_index += 1
                 # slide window buffer to right for length of receiver window size
