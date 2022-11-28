@@ -87,6 +87,8 @@ def proxy_handler(client_sock):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as remote_sock:
         remote_sock.connect((REMOTE_HOST, REMOTE_PORT))
         with client_sock:
+            client_sock.settimeout(None)
+            remote_sock.settimeout(None)
             # init connection
             init_raw_message = client_sock.recv(buffer_size)
             sender_init_message = json.loads(init_raw_message.decode('utf-8'))
@@ -103,7 +105,7 @@ def proxy_handler(client_sock):
             window = 0
             avaliable_window = init_window_size
 
-            while True:
+            while index < total_segments:
                 if avaliable_window > 0:
                     raw_data = client_sock.recv(buffer_size)
                     data_buffer[index]["data"] = raw_data
@@ -114,8 +116,8 @@ def proxy_handler(client_sock):
                     else:
                         if should_delay_data():
                             data_buffer[index]["type"] = WindowType.DROP_DATA
-                            time.sleep(TIME_OUT)
                             print(f"Delay data {index}")
+                            time.sleep(TIME_OUT)
                         remote_sock.sendall(raw_data)
                         data_buffer[index]["type"] = WindowType.SEND_NOT_ACKED_YET
                         # print(index, "SEND")

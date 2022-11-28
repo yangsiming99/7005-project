@@ -50,12 +50,15 @@ def update_to_send(data):
 
 
 def retransmit(sock, window_buffer, current_index):
-    window_buffer[current_index]["data"].set_retransmit(1)
-    sock.sendall(window_buffer[current_index]["data"].pack_segment())
-    retransmit_raw = sock.recv(Segment.PACKET_SIZE)
-    data = Segment.unpack_segment(retransmit_raw)
-    print(data.segment_index, current_index)
-    window_buffer[data.segment_index]["type"] = WindowType.SEND_ACKED
+    try:
+        window_buffer[current_index]["data"].set_retransmit(1)
+        sock.sendall(window_buffer[current_index]["data"].pack_segment())
+        retransmit_raw = sock.recv(Segment.PACKET_SIZE)
+        data = Segment.unpack_segment(retransmit_raw)
+        print(data.segment_index, current_index)
+        window_buffer[data.segment_index]["type"] = WindowType.SEND_ACKED
+    except timeout:
+        print("胡萝卜")
 
 
 def main():

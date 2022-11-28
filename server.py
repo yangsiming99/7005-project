@@ -67,7 +67,7 @@ def main():
 
                 index = 0
                 window = 0
-                while True:
+                while index < total_segments:
                     avaliable_window = sum(1 for i in window_buffer if i["type"] == WindowType.AVALIABLE)
                     if avaliable_window > 0:
                         conn.settimeout(TIME_OUT)
