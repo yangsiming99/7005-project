@@ -20,7 +20,7 @@ REMOTE_HOST = "127.0.0.1"
 REMOTE_PORT = 5000
 
 DROP_DATA = 0
-DROP_ACK = 50
+DROP_ACK = 100
 
 DELAY_DATA = 0
 DELAY_ACK = 0
@@ -58,9 +58,18 @@ def update_to_avaliable(data):
 
 
 def retransmit_ack(client_sock, buffer_size, remote_sock, data_buffer, ack_index):
-    retransmit_raw = client_sock.recv(buffer_size)
+    retransmit = Segment.unpack_segment(client_sock.recv(buffer_size))
+    retransmit_raw = Segment(
+        retransmit.ack_no,
+        retransmit.sequence_no,
+        retransmit.window_size,
+        retransmit.segment_index,
+        str(retransmit.data),
+        2
+    ).pack_segment()
     remote_sock.sendall(retransmit_raw)
     retransmit_ack_raw = remote_sock.recv(buffer_size)
+    print(Segment.unpack_segment(retransmit_ack_raw).segment_index, "After RE-ACK")
     client_sock.sendall(retransmit_ack_raw)
     data_buffer[ack_index]["type"] = WindowType.SEND_ACKED
 
@@ -94,14 +103,14 @@ def proxy_handler(client_sock):
             window = 0
             avaliable_window = init_window_size
 
-            while index < total_segments:
+            while True:
                 if avaliable_window > 0:
                     raw_data = client_sock.recv(buffer_size)
                     data_buffer[index]["data"] = raw_data
                     if should_drop_data():
                         data_buffer[index]["type"] = WindowType.DROP_DATA
-                        time.sleep(TIME_OUT)
                         print(f"Drop data {index}")
+                        time.sleep(TIME_OUT)
                     else:
                         if should_delay_data():
                             data_buffer[index]["type"] = WindowType.DROP_DATA

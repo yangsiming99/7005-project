@@ -7,12 +7,12 @@ from util import parse_number_to_fit_length
 class Segment(object):
     HEADER_SIZE = 17
     MAX_SEGMENT_SIZE = 600
-    HEADER_FORMAT = '<I I I I ?' + str(MAX_SEGMENT_SIZE) + 's'
+    HEADER_FORMAT = '<I I I I b' + str(MAX_SEGMENT_SIZE) + 's'
     PACKET_SIZE = HEADER_SIZE + MAX_SEGMENT_SIZE
     TIME_OUT = 2.0
     INIT_WINDOW_SIZE = 5
 
-    def __init__(self, ack_no, sequence_no, window_size, segment_index, data, retransmit=False):
+    def __init__(self, ack_no, sequence_no, window_size, segment_index, data, retransmit=0):
         self.ack_no = ack_no
         self.sequence_no = sequence_no
         self.window_size = window_size

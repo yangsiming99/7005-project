@@ -50,7 +50,7 @@ def update_to_send(data):
 
 
 def retransmit(sock, window_buffer, current_index):
-    window_buffer[current_index]["data"].set_retransmit(True)
+    window_buffer[current_index]["data"].set_retransmit(1)
     sock.sendall(window_buffer[current_index]["data"].pack_segment())
     retransmit_raw = sock.recv(Segment.PACKET_SIZE)
     data = Segment.unpack_segment(retransmit_raw)
@@ -87,12 +87,11 @@ def main():
         # init sequence number
         sequence_no = 0
 
-        sock.settimeout(TIME_OUT)
-
         window_size = 0
         index = 0
         # print(window_buffer)
-        while index < len(window_buffer):
+        while True:
+            sock.settimeout(TIME_OUT)
             avaliable_window = sum(1 for i in window_buffer if i["type"] == WindowType.AVALIABLE_NOT_SEND_YET)
             if avaliable_window > 0:
                 current_chunk = data[index * SEGMENT_SIZE:index * SEGMENT_SIZE + SEGMENT_SIZE]

@@ -44,22 +44,6 @@ def retransmit(conn, window_buffer, current_index):
     window_buffer[current_index]["type"] = WindowType.RECV_NO_ACKED
 
 
-def ack_thread(conn, buffer_size, window_buffer, avaliable_window):
-    retransmit_raw_data = conn.recv(buffer_size)
-    retransmit_segment = Segment.unpack_segment(retransmit_raw_data)
-    print(retransmit_segment.segment_index, "RE-RECV")
-    window_buffer[retransmit_segment.segment_index]["data"] = retransmit_segment.data.decode('utf-8')
-    window_buffer[retransmit_segment.segment_index]["sequence_no"] = len(
-        retransmit_segment.data) + retransmit_segment.sequence_no
-    window_buffer[retransmit_segment.segment_index]["ack_no"] = retransmit_segment.sequence_no
-    conn.sendall(
-        Segment(len(retransmit_segment.data) + retransmit_segment.sequence_no
-                , retransmit_segment.sequence_no, avaliable_window,
-                retransmit_segment.segment_index, "").pack_segment()
-    )
-    window_buffer[retransmit_segment.segment_index]["type"] = WindowType.RECV_NO_ACKED
-
-
 def main():
     buffer_size = 1024
     window_size = Segment.INIT_WINDOW_SIZE
@@ -83,27 +67,33 @@ def main():
 
                 index = 0
                 window = 0
-                while index < total_segments:
+                while True:
                     avaliable_window = sum(1 for i in window_buffer if i["type"] == WindowType.AVALIABLE)
                     if avaliable_window > 0:
                         conn.settimeout(TIME_OUT)
                         try:
                             raw_data = conn.recv(buffer_size)
                             segment = Segment.unpack_segment(raw_data)
-                            if segment.retransmit:
+                            if segment.retransmit == 1:
                                 window_buffer[segment.segment_index]["data"] = segment.data.decode('utf-8')
                                 window_buffer[segment.segment_index]["sequence_no"] = len(segment.data) + segment.sequence_no
                                 window_buffer[segment.segment_index]["ack_no"] = segment.sequence_no
                                 conn.sendall(
-                                    Segment(window_buffer[segment.segment_index]["sequence_no"],
-                                            window_buffer[segment.segment_index]["ack_no"],
+                                    Segment(window_buffer[segment.segment_index]["ack_no"],
+                                            window_buffer[segment.segment_index]["sequence_no"],
                                             avaliable_window,
                                             segment.segment_index, "").pack_segment()
                                 )
-                                print(segment.segment_index, "RE-ACK")
                                 window_buffer[segment.segment_index]["type"] = WindowType.RECV_ACKED
+                                print(segment.segment_index, "RE-DATA")
+                            elif segment.retransmit == 2:
+                                window_buffer[segment.segment_index]["data"] = segment.data.decode('utf-8')
+                                window_buffer[segment.segment_index]["sequence_no"] = len(segment.data) + segment.sequence_no
+                                window_buffer[segment.segment_index]["ack_no"] = segment.sequence_no
+                                window_buffer[segment.segment_index]["type"] = WindowType.RECV_ACKED
+                                print(segment.segment_index, "RE-ACK")
                             else:
-                                print(segment.segment_index, "RECV")
+                                print(segment.segment_index, index, "RECV")
                                 window_buffer[index]["data"] = segment.data.decode('utf-8')
                                 window_buffer[index]["type"] = WindowType.RECV_NO_ACKED
                                 window_buffer[index]["sequence_no"] = len(segment.data) + segment.sequence_no
