@@ -11,7 +11,6 @@ from Segment import Segment
 import matplotlib.pyplot as plt
 
 import pandas as pd
-import numpy as np
 
 BACK_LOG = 5
 BUFFER_SIZE = 1024
@@ -106,7 +105,9 @@ def proxy_handler(client_sock):
             window = 0
             avaliable_window = init_window_size
 
-            Thread(target=draw_graph, args=[data_buffer]).start()
+            graph_thread = Thread(target=draw_graph, args=[data_buffer])
+            graph_thread.daemon = True
+            graph_thread.start()
 
             while index < total_segments:
                 if avaliable_window > 0:
