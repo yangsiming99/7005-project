@@ -4,13 +4,10 @@ import math
 import sys
 import socket
 import json
-import threading
-import time
 from _socket import timeout
 from enum import Enum
 
 from Segment import Segment
-from util import pack_segment
 
 SEGMENT_SIZE = Segment.MAX_SEGMENT_SIZE
 
@@ -53,12 +50,8 @@ def retransmit(sock, window_buffer, current_index):
     try:
         window_buffer[current_index]["data"].set_retransmit(1)
         sock.sendall(window_buffer[current_index]["data"].pack_segment())
-        retransmit_raw = sock.recv(Segment.PACKET_SIZE)
-        data = Segment.unpack_segment(retransmit_raw)
-        print(data.segment_index, current_index)
-        window_buffer[data.segment_index]["type"] = WindowType.SEND_ACKED
     except timeout:
-        print("胡萝卜")
+        print("sender retransmit timeout")
 
 
 def main():
@@ -92,9 +85,10 @@ def main():
 
         window_size = 0
         index = 0
+
+        sock.settimeout(TIME_OUT)
         # print(window_buffer)
-        while True:
-            sock.settimeout(TIME_OUT)
+        while index < init_message["total_segments"]:
             avaliable_window = sum(1 for i in window_buffer if i["type"] == WindowType.AVALIABLE_NOT_SEND_YET)
             if avaliable_window > 0:
                 current_chunk = data[index * SEGMENT_SIZE:index * SEGMENT_SIZE + SEGMENT_SIZE]
@@ -113,17 +107,22 @@ def main():
                 while ack_index < window_size:
                     current_index = index - window_size + ack_index
                     try:
+                        raw_ack = sock.recv(Segment.PACKET_SIZE)
                         # ack sent data
-                        ack = Segment.unpack_segment(sock.recv(Segment.PACKET_SIZE))
+                        ack = Segment.unpack_segment(raw_ack)
                         # print(ack.sequence_no)
                         # update window buffer
-                        window_buffer[current_index]["type"] = WindowType.SEND_ACKED
-                        print(ack.segment_index, current_index, "ACK")
+                        window_buffer[ack.segment_index]["type"] = WindowType.SEND_ACKED
+                        print(ack.segment_index, "ACK")
+                        ack_index += 1
                     except timeout:
                         # retransmit
                         print(current_index, "retransmit")
                         retransmit(sock, window_buffer, current_index)
-                    ack_index += 1
+                        # retransmit_raw = sock.recv(Segment.PACKET_SIZE)
+                        # data = Segment.unpack_segment(retransmit_raw)
+                        # print(data.segment_index, current_index)
+                        # window_buffer[data.segment_index]["type"] = WindowType.SEND_ACKED
                 # slide window buffer to right for length of receiver window size
                 update_window_size = Segment.unpack_segment(sock.recv(Segment.PACKET_SIZE))
                 if update_window_size.window_size > 0:

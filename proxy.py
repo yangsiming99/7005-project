@@ -6,11 +6,12 @@ import socket
 import json
 
 from threading import Thread
-from flask import Flask
 from enum import Enum
 from Segment import Segment
+import matplotlib.pyplot as plt
 
-app = Flask(__name__)
+import pandas as pd
+import numpy as np
 
 BACK_LOG = 5
 BUFFER_SIZE = 1024
@@ -20,7 +21,7 @@ REMOTE_HOST = "127.0.0.1"
 REMOTE_PORT = 5000
 
 DROP_DATA = 0
-DROP_ACK = 100
+DROP_ACK = 0
 
 DELAY_DATA = 0
 DELAY_ACK = 0
@@ -69,7 +70,7 @@ def retransmit_ack(client_sock, buffer_size, remote_sock, data_buffer, ack_index
     ).pack_segment()
     remote_sock.sendall(retransmit_raw)
     retransmit_ack_raw = remote_sock.recv(buffer_size)
-    print(Segment.unpack_segment(retransmit_ack_raw).segment_index, "After RE-ACK")
+    # print(Segment.unpack_segment(retransmit_ack_raw).segment_index, "After RE-ACK")
     client_sock.sendall(retransmit_ack_raw)
     data_buffer[ack_index]["type"] = WindowType.SEND_ACKED
 
@@ -105,18 +106,20 @@ def proxy_handler(client_sock):
             window = 0
             avaliable_window = init_window_size
 
+            Thread(target=draw_graph, args=[data_buffer]).start()
+
             while index < total_segments:
                 if avaliable_window > 0:
                     raw_data = client_sock.recv(buffer_size)
                     data_buffer[index]["data"] = raw_data
                     if should_drop_data():
                         data_buffer[index]["type"] = WindowType.DROP_DATA
-                        print(f"Drop data {index}")
-                        time.sleep(TIME_OUT)
+                        # print(f"Drop data {index}")
+                        # time.sleep(TIME_OUT)
                     else:
                         if should_delay_data():
                             data_buffer[index]["type"] = WindowType.DROP_DATA
-                            print(f"Delay data {index}")
+                            # print(f"Delay data {index}")
                             time.sleep(TIME_OUT)
                         remote_sock.sendall(raw_data)
                         data_buffer[index]["type"] = WindowType.SEND_NOT_ACKED_YET
@@ -135,14 +138,15 @@ def proxy_handler(client_sock):
                             # print(current_index, "drop data index")
                             retransmit_data(client_sock, buffer_size, remote_sock, data_buffer, current_index)
                         elif should_drop_ack():
-                            print(f"Drop ACK {current_index}")
+                            # print(f"Drop ACK {current_index}")
                             retransmit_ack(client_sock, buffer_size, remote_sock, data_buffer, current_index)
                         elif should_delay_ack():
-                            print(f"Delay ACK {current_index}")
+                            # print(f"Delay ACK {current_index}")
                             time.sleep(TIME_OUT)
-                            raw_ack = remote_sock.recv(buffer_size)
-                            client_sock.sendall(raw_ack)
-                            data_buffer[current_index]["type"] = WindowType.SEND_ACKED
+                            retransmit_ack(client_sock, buffer_size, remote_sock, data_buffer, current_index)
+                            # raw_ack = remote_sock.recv(buffer_size)
+                            # client_sock.sendall(raw_ack)
+                            # data_buffer[current_index]["type"] = WindowType.SEND_ACKED
                         else:
                             raw_ack = remote_sock.recv(buffer_size)
                             client_sock.sendall(raw_ack)
@@ -159,17 +163,17 @@ def update_options():
     while True:
         data = input(">>>")
         data_array = data.split()
+        global DELAY_ACK
+        global DELAY_DATA
+        global DROP_DATA
+        global DROP_ACK
         if data_array[0].lower() == "delay_data":
-            global DELAY_DATA
             DELAY_DATA = data_array[1]
         elif data_array[0].lower() == "delay_ack":
-            global DELAY_ACK
             DELAY_ACK = data_array[1]
         elif data_array[0].lower() == "drop_data":
-            global DROP_DATA
             DROP_DATA = data_array[1]
         elif data_array[0].lower() == "drop_ack":
-            global DROP_ACK
             DROP_ACK = data_array[1]
 
 
@@ -178,6 +182,7 @@ def main():
         server_sock.bind(("0.0.0.0", PORT))
         server_sock.listen(BACK_LOG)
         print("Proxy Waiting for client")
+        time.sleep(0.1)
         input_thread = Thread(target=update_options, args=[])
         input_thread.start()
         while True:
@@ -192,13 +197,22 @@ def help_msg():
     print("-p or --port to specify the listening port\n")
 
 
-@app.route('/metrics')
-def hello():
-    return 'metrics'
-
-
-def prometheus():
-    app.run(host="0.0.0.0", port=5001)
+def draw_graph(data_buffer):
+    data = [0]
+    last = 0
+    while True:
+        current = sum(1 for i in data_buffer if i["type"] == WindowType.SEND_ACKED)
+        delta = current - last
+        plt.clf()
+        data.append(delta)
+        data_series = pd.Series(data)
+        plt.plot(data_series)
+        plt.xlabel("second")
+        plt.ylabel("packets/s")
+        plt.show()
+        plt.pause(1)
+        plt.ioff()
+        last = current
 
 
 if __name__ == '__main__':
@@ -218,12 +232,11 @@ if __name__ == '__main__':
             REMOTE_HOST = arg
         elif opt in ('-p', '--server_port'):
             REMOTE_PORT = int(arg)
-        else:
-            help_msg()
+        # else:
+        #     print(opt)
+        #     help_msg()
 
     try:
-        # graph_thread = Thread(target=prometheus, args=[])
-        # graph_thread.start()
         main()
     except KeyboardInterrupt:
         print("\nExit\n")
