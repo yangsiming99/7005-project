@@ -124,7 +124,7 @@ def main():
                                 conn.sendall(ack_segment)
                                 print(current_index, "ACK")
                                 window_buffer[current_index]["type"] = WindowType.RECV_ACKED
-                                # print(window_buffer[current_index]["data"])
+                                print(window_buffer[current_index]["data"])
 
                             ack_index += 1
 
