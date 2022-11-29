@@ -82,7 +82,7 @@ def retransmit_data(client_sock, buffer_size, remote_sock, data_buffer, ack_inde
     data_buffer[ack_index]["type"] = WindowType.SEND_ACKED
 
 
-def proxy_handler(client_sock):
+def proxy_handler(client_sock, data_buffer):
     buffer_size = 1024
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as remote_sock:
         remote_sock.connect((REMOTE_HOST, REMOTE_PORT))
@@ -94,7 +94,7 @@ def proxy_handler(client_sock):
             sender_init_message = json.loads(init_raw_message.decode('utf-8'))
             buffer_size = sender_init_message["packet_size"]
             total_segments = sender_init_message["total_segments"]
-            data_buffer = [{"type": WindowType.AVALIABLE_NOT_SEND_YET} for i in range(total_segments)]
+            data_buffer.extend([{"type": WindowType.AVALIABLE_NOT_SEND_YET} for i in range(total_segments)])
             # send to receiver
             remote_sock.sendall(init_raw_message)
             server_raw_info = remote_sock.recv(buffer_size)
@@ -105,9 +105,9 @@ def proxy_handler(client_sock):
             window = 0
             avaliable_window = init_window_size
 
-            graph_thread = Thread(target=draw_graph, args=[data_buffer])
-            graph_thread.daemon = True
-            graph_thread.start()
+            # graph_thread = Thread(target=draw_graph, args=[data_buffer])
+            # graph_thread.daemon = True
+            # graph_thread.start()
 
             while index < total_segments:
                 if avaliable_window > 0:
@@ -186,12 +186,15 @@ def main():
         time.sleep(0.1)
         input_thread = Thread(target=update_options, args=[])
         input_thread.start()
+        data_buffer = []
         while True:
             client, from_addr = server_sock.accept()
             # print(f"Connection from sender {from_addr} has been established")
-            proxy_thread = Thread(target=proxy_handler, args=[client])
+            proxy_thread = Thread(target=proxy_handler, args=[client, data_buffer])
             # proxy_thread.daemon = True
             proxy_thread.start()
+
+            draw_graph(data_buffer)
 
 
 def help_msg():
